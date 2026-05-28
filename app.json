@@ -1,0 +1,37 @@
+{
+  "name": "telegram-text-tool-bot",
+  "description": "Premium Telegram text utility bot with MongoDB, admin panel, referrals, premium, broadcast, and force subscription.",
+  "keywords": ["telegram", "bot", "aiogram", "mongodb", "heroku"],
+  "env": {
+    "BOT_TOKEN": {
+      "description": "Telegram bot token from BotFather.",
+      "required": true
+    },
+    "MONGO_URL": {
+      "description": "MongoDB connection URL.",
+      "required": true
+    },
+    "ADMIN_IDS": {
+      "description": "Comma-separated Telegram user IDs allowed to open /admin.",
+      "required": true
+    },
+    "OWNER_IDS": {
+      "description": "Comma-separated Telegram owner user IDs.",
+      "required": true
+    },
+    "SUPPORT_USERNAME": {
+      "description": "Support username without @.",
+      "required": true
+    },
+    "UPDATE_CHANNEL": {
+      "description": "Update channel username without @.",
+      "required": true
+    }
+  },
+  "formation": {
+    "worker": {
+      "quantity": 1,
+      "size": "basic"
+    }
+  }
+}
