@@ -31,8 +31,10 @@ def main_menu_keyboard() -> InlineKeyboardMarkup:
             ],
             [InlineKeyboardButton(text=f"1️⃣ {bold_unicode('TEXT STYLE & FONTS')}", callback_data=f"cat:{STYLE_CATEGORY}")],
             [InlineKeyboardButton(text=f"2️⃣ {bold_unicode('TEXT CLEANING & UTILITY')}", callback_data=f"cat:{UTILITY_CATEGORY}")],
-            [InlineKeyboardButton(text=btn("My Tasks", "📂"), callback_data="menu:tasks")],
-            [InlineKeyboardButton(text=btn("System Status", "📊"), callback_data="menu:status")],
+            [
+                InlineKeyboardButton(text=btn("My Tasks", "📂"), callback_data="menu:tasks"),
+                InlineKeyboardButton(text=btn("System Status", "📊"), callback_data="menu:status"),
+            ],
         ]
     )
 
@@ -40,9 +42,24 @@ def main_menu_keyboard() -> InlineKeyboardMarkup:
 def category_keyboard(category: str) -> InlineKeyboardMarkup:
     rows: list[list[InlineKeyboardButton]] = []
     for tool in CATEGORY_TOOLS[category]:
-        rows.append([InlineKeyboardButton(text=bold_unicode(tool.title), callback_data=f"tool:{tool.key}")])
+        rows.append([InlineKeyboardButton(text=btn(tool.title, tool.emoji), callback_data=f"tool:{tool.key}")])
     rows.append(nav_row())
     return keyboard(rows)
+
+
+def tool_prompt_keyboard(category: str) -> InlineKeyboardMarkup:
+    return keyboard(
+        [
+            [
+                InlineKeyboardButton(text=btn("Back to Tools", "🔙"), callback_data=f"cat:{category}"),
+                InlineKeyboardButton(text=btn("Main Menu", "🏠"), callback_data="menu:home"),
+            ],
+            [
+                InlineKeyboardButton(text=btn("My Tasks", "📂"), callback_data="menu:tasks"),
+                InlineKeyboardButton(text=btn("Help", "❓"), callback_data="menu:help"),
+            ],
+        ]
+    )
 
 
 def nav_row(back_to: str = "menu:home") -> list[InlineKeyboardButton]:
@@ -53,14 +70,15 @@ def nav_row(back_to: str = "menu:home") -> list[InlineKeyboardButton]:
 
 
 def result_keyboard(tool: ToolDefinition, saved: bool = False) -> InlineKeyboardMarkup:
-    save_text = "Saved in My Tasks" if saved else "Save to My Tasks"
+    save_text = "Open My Tasks" if saved else "Save to My Tasks"
+    save_callback = "menu:tasks" if saved else "task:save_latest"
     return keyboard(
         [
             [
                 InlineKeyboardButton(text=btn("Try Again", "🔁"), callback_data=f"retry:{tool.key}"),
                 InlineKeyboardButton(text=btn("Copy Result", "📋"), callback_data="copy:result"),
             ],
-            [InlineKeyboardButton(text=btn(save_text, "📂"), callback_data="task:save_latest")],
+            [InlineKeyboardButton(text=btn(save_text, "📂"), callback_data=save_callback)],
             [
                 InlineKeyboardButton(text=btn("Back to Category", "🔙"), callback_data=f"cat:{tool.category}"),
                 InlineKeyboardButton(text=btn("Main Menu", "🏠"), callback_data="menu:home"),
@@ -76,13 +94,13 @@ def profile_keyboard() -> InlineKeyboardMarkup:
 def premium_keyboard() -> InlineKeyboardMarkup:
     return keyboard(
         [
-            [InlineKeyboardButton(text=bold_unicode("UPGRADE"), callback_data="premium:upgrade")],
+            [InlineKeyboardButton(text=btn("Upgrade", "💎"), callback_data="premium:upgrade")],
             [
-                InlineKeyboardButton(text=bold_unicode("30 DAYS"), callback_data="premium:buy:30"),
-                InlineKeyboardButton(text=bold_unicode("90 DAYS"), callback_data="premium:buy:90"),
+                InlineKeyboardButton(text=btn("30 Days", "⭐"), callback_data="premium:buy:30"),
+                InlineKeyboardButton(text=btn("90 Days", "⭐"), callback_data="premium:buy:90"),
             ],
-            [InlineKeyboardButton(text=bold_unicode("BUY WITH STARS"), callback_data="premium:buy:365")],
-            [InlineKeyboardButton(text=bold_unicode("MY PREMIUM"), callback_data="premium:mine")],
+            [InlineKeyboardButton(text=btn("Buy With Stars", "🌟"), callback_data="premium:buy:365")],
+            [InlineKeyboardButton(text=btn("My Premium", "💎"), callback_data="premium:mine")],
             nav_row(),
         ]
     )
@@ -91,8 +109,8 @@ def premium_keyboard() -> InlineKeyboardMarkup:
 def referral_keyboard() -> InlineKeyboardMarkup:
     return keyboard(
         [
-            [InlineKeyboardButton(text=bold_unicode("INVITE FRIENDS"), callback_data="referral:invite")],
-            [InlineKeyboardButton(text=bold_unicode("MY REFERRALS"), callback_data="referral:mine")],
+            [InlineKeyboardButton(text=btn("Invite Friends", "🎁"), callback_data="referral:invite")],
+            [InlineKeyboardButton(text=btn("My Referrals", "👥"), callback_data="referral:mine")],
             nav_row(),
         ]
     )
@@ -148,7 +166,8 @@ def tasks_keyboard(tasks: list[dict]) -> InlineKeyboardMarkup:
     rows: list[list[InlineKeyboardButton]] = []
     for idx, task in enumerate(tasks, start=1):
         rows.append([InlineKeyboardButton(text=f"{idx}. {bold_unicode(task.get('tool_title', 'Task'))}", callback_data=f"task:open:{task['_id']}")])
-    rows.append([InlineKeyboardButton(text=btn("Clear History", "🧹"), callback_data="settings:confirm_clear_tasks")])
+    if tasks:
+        rows.append([InlineKeyboardButton(text=btn("Clear History", "🧹"), callback_data="settings:confirm_clear_tasks")])
     rows.append(nav_row())
     return keyboard(rows)
 
@@ -191,30 +210,30 @@ def force_gate_keyboard(channels: list[dict]) -> InlineKeyboardMarkup:
     for channel in channels:
         invite = channel.get("invite_link") or _target_url(channel.get("target", ""))
         if invite:
-            rows.append([InlineKeyboardButton(text=bold_unicode("JOIN NOW"), url=invite)])
-    rows.append([InlineKeyboardButton(text=bold_unicode("CHECK ACCESS"), callback_data="fs:check")])
-    rows.append([InlineKeyboardButton(text=bold_unicode("CONTINUE"), callback_data="fs:continue")])
+            rows.append([InlineKeyboardButton(text=btn("Join Now", "🔗"), url=invite)])
+    rows.append([InlineKeyboardButton(text=btn("Check Access", "✅"), callback_data="fs:check")])
+    rows.append([InlineKeyboardButton(text=btn("Continue", "➡️"), callback_data="fs:continue")])
     return keyboard(rows)
 
 
 def admin_keyboard() -> InlineKeyboardMarkup:
     return keyboard(
         [
-            [InlineKeyboardButton(text=bold_unicode("USER STATS"), callback_data="admin:stats")],
-            [InlineKeyboardButton(text=bold_unicode("BROADCAST"), callback_data="admin:broadcast")],
-            [InlineKeyboardButton(text=bold_unicode("PREMIUM MANAGEMENT"), callback_data="admin:premium")],
-            [InlineKeyboardButton(text=bold_unicode("FORCE SUBSCRIPTION"), callback_data="admin:force")],
-            [InlineKeyboardButton(text=bold_unicode("REFERRAL SETTINGS"), callback_data="admin:referrals")],
-            [InlineKeyboardButton(text=bold_unicode("BAN / UNBAN USERS"), callback_data="admin:ban")],
-            [InlineKeyboardButton(text=bold_unicode("MAINTENANCE MODE"), callback_data="admin:maintenance")],
-            [InlineKeyboardButton(text=bold_unicode("BOT SETTINGS"), callback_data="admin:settings")],
-            [InlineKeyboardButton(text=bold_unicode("LOGS & ERROR MONITORING"), callback_data="admin:logs")],
+            [InlineKeyboardButton(text=btn("User Stats", "📈"), callback_data="admin:stats")],
+            [InlineKeyboardButton(text=btn("Broadcast", "📣"), callback_data="admin:broadcast")],
+            [InlineKeyboardButton(text=btn("Premium Management", "💎"), callback_data="admin:premium")],
+            [InlineKeyboardButton(text=btn("Force Subscription", "🔐"), callback_data="admin:force")],
+            [InlineKeyboardButton(text=btn("Referral Settings", "🎁"), callback_data="admin:referrals")],
+            [InlineKeyboardButton(text=btn("Ban / Unban Users", "🚫"), callback_data="admin:ban")],
+            [InlineKeyboardButton(text=btn("Maintenance Mode", "🛠️"), callback_data="admin:maintenance")],
+            [InlineKeyboardButton(text=btn("Bot Settings", "⚙️"), callback_data="admin:settings")],
+            [InlineKeyboardButton(text=btn("Logs & Error Monitoring", "🧾"), callback_data="admin:logs")],
         ]
     )
 
 
 def admin_back_keyboard() -> InlineKeyboardMarkup:
-    return keyboard([[InlineKeyboardButton(text=btn("Admin Panel", "🔙"), callback_data="admin:home")]])
+    return keyboard([[InlineKeyboardButton(text=btn("Admin Panel", "🛠️"), callback_data="admin:home")]])
 
 
 def admin_broadcast_keyboard() -> InlineKeyboardMarkup:

@@ -36,6 +36,7 @@ from app.keyboards import (
     support_keyboard,
     task_detail_keyboard,
     tasks_keyboard,
+    tool_prompt_keyboard,
 )
 from app.renderers import (
     admin_broadcast_screen,
@@ -44,14 +45,19 @@ from app.renderers import (
     admin_bot_settings_screen,
     admin_referral_screen,
     admin_stats_screen,
+    cancelled_screen,
     category_screen,
+    choose_tool_first_screen,
+    empty_input_screen,
     force_subscription_screen,
     help_screen,
     logs_screen,
     main_caption,
     premium_screen,
-    referral_leaderboard_screen,
+    processing_error_screen,
+    processing_screen,
     profile_screen,
+    referral_leaderboard_screen,
     referral_screen,
     result_screen,
     settings_screen,
@@ -59,6 +65,7 @@ from app.renderers import (
     system_status_screen,
     task_detail_screen,
     tasks_screen,
+    too_long_screen,
     terms_screen,
     tool_prompt,
     unauthorized_screen,
@@ -80,7 +87,7 @@ async def cmd_start(message: Message, command: CommandObject, bot: Bot, store: M
     config = await store.runtime_config()
     await _send_or_edit(
         message,
-        main_caption(str(config.get("start_caption") or "")),
+        main_caption(str(config.get("start_caption") or ""), user),
         main_menu_keyboard(),
         photo_url=str(config.get("start_photo_url") or ""),
     )
@@ -122,7 +129,7 @@ async def cb_force_check(call: CallbackQuery, bot: Bot, store: MongoStore, setti
     config = await store.runtime_config()
     await _send_or_edit(
         call,
-        main_caption(str(config.get("start_caption") or "")),
+        main_caption(str(config.get("start_caption") or ""), user),
         main_menu_keyboard(),
         photo_url=str(config.get("start_photo_url") or ""),
     )
@@ -136,7 +143,7 @@ async def cb_home(call: CallbackQuery, bot: Bot, store: MongoStore, settings: Se
     config = await store.runtime_config()
     await _send_or_edit(
         call,
-        main_caption(str(config.get("start_caption") or "")),
+        main_caption(str(config.get("start_caption") or ""), await store.get_user(call.from_user.id)),
         main_menu_keyboard(),
         photo_url=str(config.get("start_photo_url") or ""),
     )
@@ -162,7 +169,7 @@ async def cb_tool(call: CallbackQuery, bot: Bot, store: MongoStore, settings: Se
         await call.answer("Unknown tool.", show_alert=True)
         return
     await store.set_pending_tool(call.from_user.id, tool_key)
-    await _send_or_edit(call, tool_prompt(tool_key), category_keyboard(TOOLS[tool_key].category))
+    await _send_or_edit(call, tool_prompt(tool_key), tool_prompt_keyboard(TOOLS[tool_key].category))
 
 
 @router.callback_query(F.data.startswith("retry:"))
@@ -174,12 +181,12 @@ async def cb_retry(call: CallbackQuery, bot: Bot, store: MongoStore, settings: S
         await call.answer("Unknown tool.", show_alert=True)
         return
     await store.set_pending_tool(call.from_user.id, tool_key)
-    await _send_or_edit(call, tool_prompt(tool_key), category_keyboard(TOOLS[tool_key].category))
+    await _send_or_edit(call, tool_prompt(tool_key), tool_prompt_keyboard(TOOLS[tool_key].category))
 
 
 @router.callback_query(F.data == "copy:result")
 async def cb_copy_result(call: CallbackQuery) -> None:
-    await call.answer("Telegram does not allow bots to copy automatically. Long-press the result and copy it.", show_alert=True)
+    await call.answer("Long-press the result block, then choose Copy. Telegram does not allow bots to copy automatically.", show_alert=True)
 
 
 @router.callback_query(F.data == "menu:profile")
@@ -249,11 +256,11 @@ async def successful_payment(message: Message, store: MongoStore) -> None:
             raise ValueError("payment user mismatch")
         premium_until = await store.activate_premium(message.from_user.id, days, source="telegram_stars")
         await message.answer(
-            f"{bold_unicode('PREMIUM ACTIVE')}\n\nYour premium is active until {premium_until.strftime('%d %b %Y')}."
+            f"💎 {bold_unicode('PREMIUM ACTIVE')}\n\nYour premium is active until {premium_until.strftime('%d %b %Y')}."
         )
     except Exception:
         await store.add_log("payment", f"Could not activate payment payload {payload}", user_id=message.from_user.id)
-        await message.answer("Payment received, but activation failed. Please contact support.")
+        await message.answer(f"⚠️ {bold_unicode('ACTIVATION FAILED')}\n\nPayment was received, but premium activation failed. Please contact support.")
 
 
 @router.callback_query(F.data == "menu:referral")
@@ -334,20 +341,20 @@ async def cb_settings_action(call: CallbackQuery, bot: Bot, store: MongoStore, s
     elif action == "toggle_privacy":
         await store.set_user_setting(call.from_user.id, "privacy_mode", not user_settings.get("privacy_mode", False))
     elif action == "confirm_clear_tasks":
-        await _send_or_edit(call, f"{bold_unicode('CONFIRM CLEAR HISTORY')}\n\nThis will delete all saved tasks.", confirm_keyboard("settings:clear_tasks", "menu:tasks"))
+        await _send_or_edit(call, f"🧹 {bold_unicode('CONFIRM CLEAR HISTORY')}\n\nThis will delete all saved tasks.", confirm_keyboard("settings:clear_tasks", "menu:tasks"))
         return
     elif action == "clear_tasks":
         deleted = await store.clear_tasks(call.from_user.id)
         await call.answer(f"Cleared {deleted} task(s).")
     elif action == "confirm_clear_data":
-        await _send_or_edit(call, f"{bold_unicode('CONFIRM CLEAR DATA')}\n\nThis will delete task history and recent result data.", confirm_keyboard("settings:clear_data", "menu:settings"))
+        await _send_or_edit(call, f"🧹 {bold_unicode('CONFIRM CLEAR DATA')}\n\nThis will delete task history and recent result data.", confirm_keyboard("settings:clear_data", "menu:settings"))
         return
     elif action == "clear_data":
         deleted = await store.clear_tasks(call.from_user.id)
         await store.set_user_fields(call.from_user.id, {"last_result": None, "pending_tool": None})
         await call.answer(f"Cleared {deleted} task(s) and recent result data.")
     elif action == "confirm_reset":
-        await _send_or_edit(call, f"{bold_unicode('CONFIRM RESET SETTINGS')}\n\nThis will restore default user preferences.", confirm_keyboard("settings:reset_defaults", "menu:settings"))
+        await _send_or_edit(call, f"♻️ {bold_unicode('CONFIRM RESET SETTINGS')}\n\nThis will restore default user preferences.", confirm_keyboard("settings:reset_defaults", "menu:settings"))
         return
     elif action == "reset_defaults":
         await store.set_user_fields(
@@ -367,10 +374,10 @@ async def cb_settings_action(call: CallbackQuery, bot: Bot, store: MongoStore, s
         await _send_or_edit(call, terms_screen(), settings_keyboard())
         return
     elif action == "language":
-        await _send_or_edit(call, f"{bold_unicode('LANGUAGE')}\n\nSelect your preferred language.", language_keyboard())
+        await _send_or_edit(call, f"🌐 {bold_unicode('LANGUAGE')}\n\nSelect your preferred language.", language_keyboard())
         return
     elif action == "style":
-        await _send_or_edit(call, f"{bold_unicode('DEFAULT OUTPUT STYLE')}\n\nSelect how results should be presented.", output_style_keyboard())
+        await _send_or_edit(call, f"🎨 {bold_unicode('DEFAULT OUTPUT STYLE')}\n\nSelect how results should be presented.", output_style_keyboard())
         return
     elif action.startswith("lang:"):
         language = action.split(":", 1)[1]
@@ -447,6 +454,13 @@ async def cb_save_latest(call: CallbackQuery, store: MongoStore) -> None:
     last["task_id"] = task_id
     await store.set_last_result(call.from_user.id, last)
     await call.answer("Saved to My Tasks.")
+    tool = TOOLS.get(last["tool_key"])
+    if tool:
+        await _send_or_edit(
+            call,
+            result_screen(last["tool_key"], last["original"], last["result"]),
+            result_keyboard(tool, saved=True),
+        )
 
 
 @router.callback_query(F.data.startswith("task:open:"))
@@ -472,7 +486,7 @@ async def cb_task_delete_ask(call: CallbackQuery, bot: Bot, store: MongoStore, s
         return
     await _send_or_edit(
         call,
-        f"{bold_unicode('CONFIRM DELETE TASK')}\n\nThis saved result will be removed from My Tasks.",
+        f"🗑️ {bold_unicode('CONFIRM DELETE TASK')}\n\nThis saved result will be removed from My Tasks.",
         confirm_keyboard(f"task:delete_confirm:{task_id}", f"task:open:{task_id}"),
     )
 
@@ -502,15 +516,15 @@ async def cb_admin(call: CallbackQuery, bot: Bot, store: MongoStore, settings: S
         await _send_or_edit(call, admin_broadcast_screen(), admin_broadcast_keyboard())
     elif data == "admin:broadcast:start":
         await store.set_admin_action(call.from_user.id, "broadcast_waiting")
-        await _send_or_edit(call, f"{bold_unicode('BROADCAST')}\n\nSend the broadcast message now. Send /cancel to stop.", admin_back_keyboard())
+        await _send_or_edit(call, f"📣 {bold_unicode('BROADCAST')}\n\nSend the broadcast message now. Use /cancel to stop.", admin_back_keyboard())
     elif data == "admin:premium":
-        await _send_or_edit(call, f"{bold_unicode('PREMIUM MANAGEMENT')}\n\nAdd or remove premium access by Telegram ID.", admin_premium_keyboard())
+        await _send_or_edit(call, f"💎 {bold_unicode('PREMIUM MANAGEMENT')}\n\nAdd or remove premium access by Telegram ID.", admin_premium_keyboard())
     elif data == "admin:premium:add":
         await store.set_admin_action(call.from_user.id, "premium_add")
-        await _send_or_edit(call, "Send: user_id days\nExample: 123456789 30", admin_back_keyboard())
+        await _send_or_edit(call, f"➕ {bold_unicode('ADD PREMIUM')}\n\nSend: <code>user_id days</code>\nExample: <code>123456789 30</code>", admin_back_keyboard())
     elif data == "admin:premium:remove":
         await store.set_admin_action(call.from_user.id, "premium_remove")
-        await _send_or_edit(call, "Send the Telegram user ID to remove premium.", admin_back_keyboard())
+        await _send_or_edit(call, f"➖ {bold_unicode('REMOVE PREMIUM')}\n\nSend the Telegram user ID to remove premium.", admin_back_keyboard())
     elif data == "admin:force":
         channels = await store.list_force_channels(enabled_only=False)
         config = await store.runtime_config()
@@ -536,14 +550,14 @@ async def cb_admin(call: CallbackQuery, bot: Bot, store: MongoStore, settings: S
         await store.set_admin_action(call.from_user.id, "force_add")
         await _send_or_edit(
             call,
-            "Send channel username, ID, invite link, or forward a channel post.\n\nOptional: add join or request after it.",
+            f"➕ {bold_unicode('ADD FORCE CHANNEL')}\n\nSend channel username, ID, invite link, or forward a channel post.\n\nOptional: add <code>join</code> or <code>request</code> after it.",
             admin_back_keyboard(),
         )
     elif data.startswith("admin:force:delete_ask:"):
         channel_id = data.rsplit(":", 1)[1]
         await _send_or_edit(
             call,
-            f"{bold_unicode('CONFIRM DELETE CHANNEL')}\n\nThis force-subscription target will be removed.",
+            f"🗑️ {bold_unicode('CONFIRM DELETE CHANNEL')}\n\nThis force-subscription target will be removed.",
             confirm_keyboard(f"admin:force:delete_confirm:{channel_id}", "admin:force"),
         )
     elif data.startswith("admin:force:delete_confirm:"):
@@ -562,23 +576,23 @@ async def cb_admin(call: CallbackQuery, bot: Bot, store: MongoStore, settings: S
         await _send_or_edit(call, admin_referral_screen(config), admin_referral_keyboard(enabled))
     elif data == "admin:referrals:required":
         await store.set_admin_action(call.from_user.id, "referral_required")
-        await _send_or_edit(call, "Send the required valid referral count.\nExample: 3", admin_back_keyboard())
+        await _send_or_edit(call, f"🎯 {bold_unicode('REQUIRED REFERRALS')}\n\nSend the required valid referral count.\nExample: <code>3</code>", admin_back_keyboard())
     elif data == "admin:referrals:days":
         await store.set_admin_action(call.from_user.id, "referral_days")
-        await _send_or_edit(call, "Send the premium reward duration in days.\nExample: 7", admin_back_keyboard())
+        await _send_or_edit(call, f"💎 {bold_unicode('REWARD DURATION')}\n\nSend the premium reward duration in days.\nExample: <code>7</code>", admin_back_keyboard())
     elif data == "admin:referrals:leaderboard":
         await _send_or_edit(call, referral_leaderboard_screen(await store.referral_leaderboard()), admin_back_keyboard())
     elif data == "admin:ban":
         await _send_or_edit(call, f"{bold_unicode('BAN / UNBAN USERS')}\n\nChoose an action.", admin_ban_keyboard())
     elif data == "admin:ban:add":
         await store.set_admin_action(call.from_user.id, "ban_add")
-        await _send_or_edit(call, "Send the Telegram user ID to ban.", admin_back_keyboard())
+        await _send_or_edit(call, f"🚫 {bold_unicode('BAN USER')}\n\nSend the Telegram user ID to ban.", admin_back_keyboard())
     elif data == "admin:ban:remove":
         await store.set_admin_action(call.from_user.id, "ban_remove")
-        await _send_or_edit(call, "Send the Telegram user ID to unban.", admin_back_keyboard())
+        await _send_or_edit(call, f"✅ {bold_unicode('UNBAN USER')}\n\nSend the Telegram user ID to unban.", admin_back_keyboard())
     elif data == "admin:maintenance":
         new_value = await store.toggle_maintenance()
-        await _send_or_edit(call, f"{bold_unicode('MAINTENANCE MODE')}\n\nStatus: {'On' if new_value else 'Off'}", admin_back_keyboard())
+        await _send_or_edit(call, f"🛠️ {bold_unicode('MAINTENANCE MODE')}\n\nStatus: {'On ✅' if new_value else 'Off ⭕'}", admin_back_keyboard())
     elif data == "admin:settings":
         config = await store.runtime_config()
         await _send_or_edit(call, admin_bot_settings_screen(config), admin_bot_settings_keyboard())
@@ -598,7 +612,7 @@ async def cmd_cancel(message: Message, store: MongoStore, settings: Settings) ->
         await store.set_admin_action(message.from_user.id, None)
     if message.from_user:
         await store.set_pending_tool(message.from_user.id, None)
-    await message.answer("Current action cancelled.", reply_markup=main_menu_keyboard())
+    await message.answer(cancelled_screen(), reply_markup=main_menu_keyboard())
 
 
 @router.message()
@@ -618,17 +632,17 @@ async def incoming_message(message: Message, bot: Bot, store: MongoStore, settin
     tool_key = await store.get_pending_tool(message.from_user.id)
     if not tool_key:
         await message.answer(
-            f"{bold_unicode('Choose a tool first.')}\n\nOpen a category, select a feature, then send your text.",
+            choose_tool_first_screen(),
             reply_markup=main_menu_keyboard(),
         )
         return
     if not text.strip():
-        await message.answer("Please send valid text to continue.")
+        await message.answer(empty_input_screen())
         return
     config = await store.runtime_config()
     max_text_chars = int(config.get("max_text_chars", settings.max_text_chars))
     if len(text) > max_text_chars:
-        await message.answer(f"Your text is too long. Please send {max_text_chars} characters or less, or split it into parts.")
+        await message.answer(too_long_screen(max_text_chars))
         return
     usage_allowed, usage_message = await _usage_guard(message, user, store, settings, config)
     if not usage_allowed:
@@ -636,17 +650,17 @@ async def incoming_message(message: Message, bot: Bot, store: MongoStore, settin
         return
 
     tool = TOOLS[tool_key]
-    processing_message = await message.answer(f"{bold_unicode('PROCESSING')}\n\nWorking on your text...")
+    processing_message = await message.answer(processing_screen(tool_key))
     started = utcnow()
     try:
         result = process_tool(tool_key, text)
     except Exception as exc:
         logger.exception("tool processing failed for %s", tool_key)
         await store.add_log("error", f"Tool processing failed for {tool_key}: {type(exc).__name__}", user_id=message.from_user.id)
-        await _safe_edit_or_answer(processing_message, "Something went wrong while processing your text. Please try again.")
+        await _safe_edit_or_answer(processing_message, processing_error_screen())
         return
     if not result:
-        await _safe_edit_or_answer(processing_message, "Please send valid text to continue.")
+        await _safe_edit_or_answer(processing_message, empty_input_screen())
         return
 
     task_id = None
@@ -677,17 +691,17 @@ async def _handle_admin_action(message: Message, bot: Bot, store: MongoStore) ->
         await _run_broadcast(message, bot, store)
         return True
     if not message.text:
-        await message.answer("Please send valid text to continue.", reply_markup=admin_back_keyboard())
+        await message.answer(empty_input_screen(), reply_markup=admin_back_keyboard())
         return True
     text = message.text.strip()
     try:
         if action == "premium_add":
             user_id, days = _parse_user_days(text)
             until = await store.activate_premium(user_id, days, source=f"admin:{message.from_user.id}")
-            await message.answer(f"Premium activated for {user_id} until {until.strftime('%d %b %Y')}.", reply_markup=admin_premium_keyboard())
+            await message.answer(f"💎 {bold_unicode('PREMIUM ACTIVATED')}\n\nUser {user_id} is premium until {until.strftime('%d %b %Y')}.", reply_markup=admin_premium_keyboard())
         elif action == "premium_remove":
             await store.remove_premium(int(text))
-            await message.answer(f"Premium removed for {text}.", reply_markup=admin_premium_keyboard())
+            await message.answer(f"✅ {bold_unicode('PREMIUM REMOVED')}\n\nPremium access removed for {text}.", reply_markup=admin_premium_keyboard())
         elif action == "force_add":
             target, label, invite_link, mode = _parse_force_channel(message)
             await store.add_force_channel(target, label, invite_link=invite_link, mode=mode)
@@ -713,14 +727,14 @@ async def _handle_admin_action(message: Message, bot: Bot, store: MongoStore) ->
             await message.answer(admin_bot_settings_screen(config), reply_markup=admin_bot_settings_keyboard())
         elif action == "ban_add":
             await store.set_ban(int(text), True)
-            await message.answer(f"User {text} banned.", reply_markup=admin_ban_keyboard())
+            await message.answer(f"🚫 {bold_unicode('USER BANNED')}\n\nUser {text} is now banned.", reply_markup=admin_ban_keyboard())
         elif action == "ban_remove":
             await store.set_ban(int(text), False)
-            await message.answer(f"User {text} unbanned.", reply_markup=admin_ban_keyboard())
+            await message.answer(f"✅ {bold_unicode('USER UNBANNED')}\n\nUser {text} can use the bot again.", reply_markup=admin_ban_keyboard())
         else:
-            await message.answer("Unknown admin action.", reply_markup=admin_back_keyboard())
+            await message.answer(f"⚠️ {bold_unicode('UNKNOWN ADMIN ACTION')}", reply_markup=admin_back_keyboard())
     except Exception as exc:
-        await message.answer(f"Invalid input: {type(exc).__name__}. Please try again.", reply_markup=admin_back_keyboard())
+        await message.answer(f"⚠️ {bold_unicode('INVALID INPUT')}\n\n{type(exc).__name__}. Please try again.", reply_markup=admin_back_keyboard())
         return True
     await store.set_admin_action(message.from_user.id, None)
     return True
@@ -731,7 +745,7 @@ async def _run_broadcast(message: Message, bot: Bot, store: MongoStore) -> None:
     total = len(user_ids)
     sent = 0
     failed = 0
-    progress = await message.answer(f"{bold_unicode('BROADCAST STARTED')}\n\nTotal users: {total}\nSent: 0\nFailed: 0")
+    progress = await message.answer(f"📣 {bold_unicode('BROADCAST STARTED')}\n\nTotal users: {total}\nSent: 0\nFailed: 0")
     for idx, user_id in enumerate(user_ids, start=1):
         try:
             await bot.copy_message(
@@ -751,14 +765,14 @@ async def _run_broadcast(message: Message, bot: Bot, store: MongoStore) -> None:
         if idx % 25 == 0 or idx == total:
             try:
                 await progress.edit_text(
-                    f"{bold_unicode('BROADCAST PROGRESS')}\n\nTotal users: {total}\nSent: {sent}\nFailed: {failed}\nStatus: Running"
+                    f"📣 {bold_unicode('BROADCAST PROGRESS')}\n\nTotal users: {total}\nSent: {sent}\nFailed: {failed}\nStatus: Running"
                 )
             except TelegramBadRequest:
                 pass
         await asyncio.sleep(0.03)
     await store.record_broadcast(message.from_user.id, total, sent, failed)
     await progress.edit_text(
-        f"{bold_unicode('BROADCAST COMPLETED')}\n\nTotal users: {total}\nSent: {sent}\nFailed: {failed}\nStatus: Completed",
+        f"✅ {bold_unicode('BROADCAST COMPLETED')}\n\nTotal users: {total}\nSent: {sent}\nFailed: {failed}\nStatus: Completed",
         reply_markup=admin_back_keyboard(),
     )
 
@@ -772,10 +786,10 @@ async def _ensure_user_access(
 ) -> dict[str, Any] | None:
     user = await store.upsert_user(event.from_user, referral_arg=referral_arg)
     if user.get("is_banned"):
-        await _send_or_edit(event, f"{bold_unicode('ACCESS RESTRICTED')}\n\nYour account is restricted from using this bot.")
+        await _send_or_edit(event, f"🔒 {bold_unicode('ACCESS RESTRICTED')}\n\nYour account is restricted from using this bot.")
         return None
     if await store.is_maintenance() and not settings.is_admin(event.from_user.id):
-        await _send_or_edit(event, f"{bold_unicode('MAINTENANCE MODE')}\n\nThe bot is temporarily under maintenance. Please try again later.")
+        await _send_or_edit(event, f"🛠️ {bold_unicode('MAINTENANCE MODE')}\n\nThe bot is temporarily under maintenance. Please try again later.")
         return None
     missing = await _missing_force_channels(bot, store, event.from_user.id)
     if missing and not settings.is_admin(event.from_user.id):
@@ -836,7 +850,7 @@ async def _usage_guard(
         if restricted_until.tzinfo is None:
             restricted_until = restricted_until.replace(tzinfo=UTC)
         if restricted_until > now:
-            return False, f"{bold_unicode('TEMPORARILY RESTRICTED')}\n\nPlease wait before using another tool."
+            return False, f"⏳ {bold_unicode('TEMPORARILY RESTRICTED')}\n\nPlease wait before using another tool."
 
     cooldown_seconds = max(0, int(config.get("cooldown_seconds", 2)))
     last_tool_at = user.get("last_tool_at")
@@ -852,11 +866,11 @@ async def _usage_guard(
                 fields["rate_limit_hits"] = 0
             await store.set_user_fields(message.from_user.id, fields)
             remaining = max(1, int(cooldown_seconds - elapsed))
-            return False, f"{bold_unicode('COOLDOWN ACTIVE')}\n\nPlease wait {remaining}s before sending another text."
+            return False, f"⏱️ {bold_unicode('COOLDOWN ACTIVE')}\n\nPlease wait {remaining}s before sending another text."
 
     limit = int(config.get("premium_daily_limit", settings.premium_daily_limit)) if active_premium else int(config.get("free_daily_limit", settings.free_daily_limit))
     if user.get("usage_date") == today_key() and int(user.get("daily_usage", 0)) >= limit:
-        return False, f"{bold_unicode('DAILY LIMIT REACHED')}\n\nUpgrade to Premium for higher daily usage limits."
+        return False, f"💎 {bold_unicode('DAILY LIMIT REACHED')}\n\nUpgrade to Premium for higher daily usage limits."
     await store.increment_usage(message.from_user.id)
     await store.set_user_fields(message.from_user.id, {"last_tool_at": now, "rate_limit_hits": 0})
     return True, ""
@@ -943,16 +957,16 @@ def _parse_positive_int(text: str, field: str) -> int:
 
 def _bot_setting_prompt(key: str) -> str:
     prompts = {
-        "start_caption": "Send the new /start caption text. Send default to clear the custom caption.",
-        "start_photo_url": "Send the start photo URL. Send default to clear it.",
-        "support_username": "Send support username without @. Send default to clear it.",
-        "update_channel": "Send update channel username without @. Send default to clear it.",
-        "free_daily_limit": "Send the free user daily limit as a number.",
-        "premium_daily_limit": "Send the premium user daily limit as a number.",
-        "cooldown_seconds": "Send cooldown seconds as a number. Use 0 to disable cooldown.",
-        "max_text_chars": "Send maximum accepted text length as a number.",
+        "start_caption": f"📝 {bold_unicode('START CAPTION')}\n\nSend the new /start caption text. Send <code>default</code> to clear it.",
+        "start_photo_url": f"🖼️ {bold_unicode('START PHOTO')}\n\nSend the start photo URL. Send <code>default</code> to clear it.",
+        "support_username": f"🛟 {bold_unicode('SUPPORT USERNAME')}\n\nSend support username without @. Send <code>default</code> to clear it.",
+        "update_channel": f"📣 {bold_unicode('UPDATE CHANNEL')}\n\nSend update channel username without @. Send <code>default</code> to clear it.",
+        "free_daily_limit": f"📉 {bold_unicode('FREE DAILY LIMIT')}\n\nSend the free user daily limit as a number.",
+        "premium_daily_limit": f"📈 {bold_unicode('PREMIUM DAILY LIMIT')}\n\nSend the premium user daily limit as a number.",
+        "cooldown_seconds": f"⏱️ {bold_unicode('COOLDOWN SECONDS')}\n\nSend cooldown seconds as a number. Use <code>0</code> to disable cooldown.",
+        "max_text_chars": f"✍️ {bold_unicode('MAX TEXT LENGTH')}\n\nSend maximum accepted text length as a number.",
     }
-    return prompts.get(key, "Send the new value.")
+    return prompts.get(key, f"⚙️ {bold_unicode('BOT SETTING')}\n\nSend the new value.")
 
 
 def _parse_bot_setting_value(key: str, text: str) -> str | int:

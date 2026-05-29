@@ -1,5 +1,14 @@
-from app.catalog import STYLE_TOOLS, UTILITY_TOOLS, STYLE_CATEGORY, UTILITY_CATEGORY
-from app.keyboards import admin_keyboard, category_keyboard, main_menu_keyboard, settings_keyboard
+from app.catalog import STYLE_TOOLS, UTILITY_TOOLS, STYLE_CATEGORY, UTILITY_CATEGORY, TOOLS
+from app.keyboards import (
+    admin_keyboard,
+    category_keyboard,
+    main_menu_keyboard,
+    result_keyboard,
+    settings_keyboard,
+    tool_prompt_keyboard,
+)
+from app.renderers import category_screen, main_caption, processing_screen, result_screen, tool_prompt
+from app.text_style import bold_unicode
 
 
 def flatten_buttons(markup):
@@ -39,6 +48,53 @@ def test_category_keyboards_show_every_listed_tool_once():
 
     assert [f"tool:{tool.key}" for tool in STYLE_TOOLS] == [callback for callback in style_callbacks if callback and callback.startswith("tool:")]
     assert [f"tool:{tool.key}" for tool in UTILITY_TOOLS] == [callback for callback in utility_callbacks if callback and callback.startswith("tool:")]
+
+
+def test_feature_buttons_have_intentional_matching_emojis():
+    for category, tools in [(STYLE_CATEGORY, STYLE_TOOLS), (UTILITY_CATEGORY, UTILITY_TOOLS)]:
+        rows = category_keyboard(category).inline_keyboard[: len(tools)]
+        for row, tool in zip(rows, tools, strict=True):
+            assert row[0].text.startswith(tool.emoji)
+            assert bold_unicode(tool.title) in row[0].text
+
+
+def test_selected_tool_prompt_uses_focused_navigation():
+    markup = tool_prompt_keyboard(STYLE_CATEGORY)
+    callbacks = [button.callback_data for button in flatten_buttons(markup)]
+
+    assert f"cat:{STYLE_CATEGORY}" in callbacks
+    assert "menu:home" in callbacks
+    assert "menu:tasks" in callbacks
+    assert "menu:help" in callbacks
+    assert not any((callback or "").startswith("tool:") for callback in callbacks)
+
+
+def test_core_ui_messages_are_polished_and_copy_friendly():
+    home = main_caption(user={"first_name": "<Abhi>", "last_name": "", "username": ""})
+    category = category_screen(STYLE_CATEGORY)
+    prompt = tool_prompt("stylish_text")
+    processing = processing_screen("stylish_text")
+    result = result_screen("stylish_text", "Your Text", "Style 1: Your Text")
+
+    assert "🧰" in home
+    assert "&lt;Abhi&gt;" in home
+    assert bold_unicode("Start with one section below") in home
+    assert "✨" in category
+    assert bold_unicode("Available tools") in category
+    assert bold_unicode("Current Category") in prompt
+    assert bold_unicode("Selected Tool") in prompt
+    assert bold_unicode("Send next") in prompt
+    assert "⏳" in processing
+    assert bold_unicode("Copy-Friendly Result") in result
+    assert "<code>Style 1: Your Text</code>" in result
+
+
+def test_saved_result_button_opens_tasks():
+    markup = result_keyboard(TOOLS["stylish_text"], saved=True)
+    callbacks = [button.callback_data for button in flatten_buttons(markup)]
+
+    assert "menu:tasks" in callbacks
+    assert "task:save_latest" not in callbacks
 
 
 def test_admin_and_settings_buttons_have_valid_callback_lengths():
