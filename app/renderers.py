@@ -24,14 +24,16 @@ def main_caption(custom_caption: str = "", user: dict[str, Any] | None = None) -
     if custom_caption.strip():
         body = custom_caption.strip()
     else:
-        body = "Style text, clean messy messages, count words, extract links, and format Telegram-ready content."
+        body = "Style, clean, count, extract, and format text in seconds."
     greeting = f"{bold_unicode('Welcome')}, {escape_html(name)}." if name else bold_unicode("Welcome.")
     return (
         f"🧰 {bold_unicode('TEXT TOOL BOT')}\n\n"
         f"{greeting}\n"
         f"{escape_html(body)}\n\n"
-        f"{bold_unicode('Start with one section below.')}\n"
-        "Tools stay inside categories so the menu stays clean."
+        f"{bold_unicode('Start Here')}\n"
+        "1. Choose a category\n"
+        "2. Pick one tool\n"
+        "3. Send your text"
     )
 
 
@@ -41,7 +43,7 @@ def category_screen(category: str) -> str:
         f"{category_emoji(category)} {category_title(category)}\n\n"
         f"{category_description(category)}\n\n"
         f"{bold_unicode('Available tools')}: {len(tools)}\n"
-        f"{bold_unicode('Next step')}: Choose one tool, then send your text."
+        f"{bold_unicode('Next')}: Choose a tool below."
     )
 
 
@@ -49,11 +51,11 @@ def tool_prompt(tool_key: str) -> str:
     tool = TOOLS[tool_key]
     return (
         f"{tool.emoji} {tool.display_title}\n\n"
-        f"{bold_unicode('Current Category')}: {category_emoji(tool.category)} {category_title(tool.category)}\n"
-        f"{bold_unicode('Selected Tool')}: {tool.display_title}\n\n"
-        f"{bold_unicode('Send next')}: {tool.instruction}\n"
-        f"{bold_unicode('Output')}: You will receive {tool.result_hint}.\n\n"
-        "Send your text as the next message. Use /cancel anytime to leave this tool."
+        f"{bold_unicode('Category')}: {category_emoji(tool.category)} {category_title(tool.category)}\n"
+        f"{bold_unicode('Status')}: Waiting for your text\n\n"
+        f"{bold_unicode('Send')}: {tool.instruction}\n"
+        f"{bold_unicode('You get')}: {tool.result_hint}.\n\n"
+        "Send the text as your next message, or cancel this tool from the buttons below."
     )
 
 
@@ -62,27 +64,28 @@ def processing_screen(tool_key: str) -> str:
     return (
         f"⏳ {bold_unicode('PROCESSING')}\n\n"
         f"{bold_unicode('Tool')}: {tool.emoji} {tool.display_title}\n"
-        "Preparing a clean copy-friendly result..."
+        f"{bold_unicode('Status')}: Preparing a clean copy-friendly result..."
     )
 
 
-def result_screen(tool_key: str, original: str, result: str) -> str:
+def result_screen(tool_key: str, original: str, result: str, saved: bool = False) -> str:
     tool = TOOLS[tool_key]
     result = clamp(result, 3200)
     return (
         f"✅ {bold_unicode('RESULT READY')}\n\n"
         f"{bold_unicode('Tool')}: {tool.emoji} {tool.display_title}\n"
         f"{bold_unicode('Input')}: {escape_html(preview(original, 120))}\n\n"
+        f"{bold_unicode('Saved')}: {'My Tasks' if saved else 'Not saved yet'}\n\n"
         f"{bold_unicode('Copy-Friendly Result')}\n"
         f"<code>{escape_html(result)}</code>\n\n"
-        "Use the buttons below to retry, copy, save, or return."
+        "Use the action buttons below. Try Again starts a fresh run of this tool."
     )
 
 
 def choose_tool_first_screen() -> str:
     return (
         f"🧭 {bold_unicode('CHOOSE A TOOL FIRST')}\n\n"
-        "Open a category, select the exact feature you need, then send your text."
+        "No text tool is active right now. Open a category, choose a feature, then send your text."
     )
 
 
@@ -114,6 +117,13 @@ def cancelled_screen() -> str:
     )
 
 
+def tool_cancelled_screen() -> str:
+    return (
+        f"✅ {bold_unicode('TOOL CANCELLED')}\n\n"
+        "The selected tool was cleared. Choose another category or return to the main menu."
+    )
+
+
 def profile_screen(user: dict[str, Any], saved_tasks: int, free_daily_limit: int, premium_daily_limit: int) -> str:
     premium_until = user.get("premium_until")
     is_premium = _is_premium_active(user)
@@ -138,9 +148,9 @@ def premium_screen(user: dict[str, Any], premium_daily_limit: int) -> str:
     is_premium = _is_premium_active(user)
     return (
         f"💎 {bold_unicode('PREMIUM')}\n\n"
-        f"{bold_unicode('Status')}: {'Active' if is_premium else 'Not active'}\n"
+        f"{bold_unicode('Status')}: {'Active' if is_premium else 'Free plan'}\n"
         f"{bold_unicode('Premium Until')}: {compact_dt(user.get('premium_until')) if is_premium else 'Not active'}\n\n"
-        f"{bold_unicode('Benefits')}\n"
+        f"{bold_unicode('Why upgrade')}\n"
         f"• {premium_daily_limit} tool uses per day\n"
         "• Priority processing\n"
         "• More saved task capacity\n"
@@ -235,10 +245,12 @@ def system_status_screen(counts: dict[str, int], uptime: str, maintenance: bool,
 def tasks_screen(tasks: list[dict[str, Any]]) -> str:
     if not tasks:
         return f"📂 {bold_unicode('MY TASKS')}\n\nNo saved text tasks yet. Run a tool and tap Save to My Tasks."
-    lines = [f"📂 {bold_unicode('MY TASKS')}\n"]
+    lines = [f"📂 {bold_unicode('MY TASKS')}"]
     for idx, task in enumerate(tasks, start=1):
+        tool_key = str(task.get("tool_key") or "")
+        emoji = TOOLS[tool_key].emoji if tool_key in TOOLS else "📄"
         lines.append(
-            f"{idx}. {escape_html(task.get('tool_title', 'Text Task'))} — {task.get('status', 'Completed')}\n"
+            f"{idx}. {emoji} {escape_html(task.get('tool_title', 'Text Task'))} — {task.get('status', 'Completed')}\n"
             f"{bold_unicode('Input')}: {escape_html(preview(task.get('original', ''), 55))}\n"
             f"{bold_unicode('Result')}: {escape_html(preview(task.get('result', ''), 55))}\n"
             f"{bold_unicode('Time')}: {compact_dt(task.get('created_at'))}"
@@ -247,9 +259,11 @@ def tasks_screen(tasks: list[dict[str, Any]]) -> str:
 
 
 def task_detail_screen(task: dict[str, Any]) -> str:
+    tool_key = str(task.get("tool_key") or "")
+    emoji = TOOLS[tool_key].emoji if tool_key in TOOLS else "📄"
     return (
         f"📄 {bold_unicode('TASK RESULT')}\n\n"
-        f"{bold_unicode('Task Type')}: {escape_html(task.get('tool_title', 'Text Task'))}\n"
+        f"{bold_unicode('Task Type')}: {emoji} {escape_html(task.get('tool_title', 'Text Task'))}\n"
         f"{bold_unicode('Status')}: {task.get('status', 'Completed')}\n"
         f"{bold_unicode('Date')}: {compact_dt(task.get('created_at'))}\n\n"
         f"{bold_unicode('Original')}\n<code>{escape_html(clamp(task.get('original', ''), 1000))}</code>\n\n"

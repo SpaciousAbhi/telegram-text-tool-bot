@@ -66,6 +66,7 @@ from app.renderers import (
     task_detail_screen,
     tasks_screen,
     too_long_screen,
+    tool_cancelled_screen,
     terms_screen,
     tool_prompt,
     unauthorized_screen,
@@ -84,6 +85,7 @@ async def cmd_start(message: Message, command: CommandObject, bot: Bot, store: M
     user = await _ensure_user_access(message, bot, store, settings, referral_arg=command.args)
     if not user:
         return
+    await store.set_pending_tool(message.from_user.id, None)
     config = await store.runtime_config()
     await _send_or_edit(
         message,
@@ -105,6 +107,7 @@ async def cmd_admin(message: Message, store: MongoStore, settings: Settings) -> 
 async def cmd_help(message: Message, bot: Bot, store: MongoStore, settings: Settings) -> None:
     if not await _ensure_user_access(message, bot, store, settings):
         return
+    await store.set_pending_tool(message.from_user.id, None)
     await message.answer(help_screen(), reply_markup=main_menu_keyboard())
 
 
@@ -126,6 +129,7 @@ async def cb_force_check(call: CallbackQuery, bot: Bot, store: MongoStore, setti
     if missing:
         await _send_or_edit(call, force_subscription_screen(missing), force_gate_keyboard(missing))
         return
+    await store.set_pending_tool(call.from_user.id, None)
     config = await store.runtime_config()
     await _send_or_edit(
         call,
@@ -140,6 +144,7 @@ async def cb_force_check(call: CallbackQuery, bot: Bot, store: MongoStore, setti
 async def cb_home(call: CallbackQuery, bot: Bot, store: MongoStore, settings: Settings) -> None:
     if not await _ensure_user_access(call, bot, store, settings):
         return
+    await store.set_pending_tool(call.from_user.id, None)
     config = await store.runtime_config()
     await _send_or_edit(
         call,
@@ -153,6 +158,7 @@ async def cb_home(call: CallbackQuery, bot: Bot, store: MongoStore, settings: Se
 async def cb_category(call: CallbackQuery, bot: Bot, store: MongoStore, settings: Settings) -> None:
     if not await _ensure_user_access(call, bot, store, settings):
         return
+    await store.set_pending_tool(call.from_user.id, None)
     category = call.data.split(":", 1)[1]
     if category not in {STYLE_CATEGORY, UTILITY_CATEGORY}:
         await call.answer("Unknown category.", show_alert=True)
@@ -165,6 +171,10 @@ async def cb_tool(call: CallbackQuery, bot: Bot, store: MongoStore, settings: Se
     if not await _ensure_user_access(call, bot, store, settings):
         return
     tool_key = call.data.split(":", 1)[1]
+    if tool_key == "cancel":
+        await store.set_pending_tool(call.from_user.id, None)
+        await _send_or_edit(call, tool_cancelled_screen(), main_menu_keyboard())
+        return
     if tool_key not in TOOLS:
         await call.answer("Unknown tool.", show_alert=True)
         return
@@ -194,6 +204,7 @@ async def cb_profile(call: CallbackQuery, bot: Bot, store: MongoStore, settings:
     user = await _ensure_user_access(call, bot, store, settings)
     if not user:
         return
+    await store.set_pending_tool(call.from_user.id, None)
     saved_tasks = await store.count_saved_tasks(call.from_user.id)
     config = await store.runtime_config()
     await _send_or_edit(
@@ -208,6 +219,7 @@ async def cb_premium(call: CallbackQuery, bot: Bot, store: MongoStore, settings:
     user = await _ensure_user_access(call, bot, store, settings)
     if not user:
         return
+    await store.set_pending_tool(call.from_user.id, None)
     config = await store.runtime_config()
     await _send_or_edit(call, premium_screen(user, int(config.get("premium_daily_limit", settings.premium_daily_limit))), premium_keyboard())
 
@@ -268,6 +280,7 @@ async def cb_referral(call: CallbackQuery, bot: Bot, store: MongoStore, settings
     user = await _ensure_user_access(call, bot, store, settings)
     if not user:
         return
+    await store.set_pending_tool(call.from_user.id, None)
     bot_username = None
     try:
         me = await bot.get_me()
@@ -315,6 +328,7 @@ async def cb_settings(call: CallbackQuery, bot: Bot, store: MongoStore, settings
     user = await _ensure_user_access(call, bot, store, settings)
     if not user:
         return
+    await store.set_pending_tool(call.from_user.id, None)
     user_settings = user.get("settings", {})
     await _send_or_edit(
         call,
@@ -404,6 +418,7 @@ async def cb_settings_action(call: CallbackQuery, bot: Bot, store: MongoStore, s
 async def cb_help(call: CallbackQuery, bot: Bot, store: MongoStore, settings: Settings) -> None:
     if not await _ensure_user_access(call, bot, store, settings):
         return
+    await store.set_pending_tool(call.from_user.id, None)
     await _send_or_edit(call, help_screen(), main_menu_keyboard())
 
 
@@ -411,6 +426,7 @@ async def cb_help(call: CallbackQuery, bot: Bot, store: MongoStore, settings: Se
 async def cb_support(call: CallbackQuery, bot: Bot, store: MongoStore, settings: Settings) -> None:
     if not await _ensure_user_access(call, bot, store, settings):
         return
+    await store.set_pending_tool(call.from_user.id, None)
     config = await store.runtime_config()
     support_username = str(config.get("support_username") or "").lstrip("@")
     update_channel = str(config.get("update_channel") or "").lstrip("@")
@@ -421,6 +437,7 @@ async def cb_support(call: CallbackQuery, bot: Bot, store: MongoStore, settings:
 async def cb_status(call: CallbackQuery, bot: Bot, store: MongoStore, settings: Settings) -> None:
     if not await _ensure_user_access(call, bot, store, settings):
         return
+    await store.set_pending_tool(call.from_user.id, None)
     counts = await store.counts()
     maintenance = await store.is_maintenance()
     config = await store.runtime_config()
@@ -431,6 +448,7 @@ async def cb_status(call: CallbackQuery, bot: Bot, store: MongoStore, settings: 
 async def cb_tasks(call: CallbackQuery, bot: Bot, store: MongoStore, settings: Settings) -> None:
     if not await _ensure_user_access(call, bot, store, settings):
         return
+    await store.set_pending_tool(call.from_user.id, None)
     tasks = await store.recent_tasks(call.from_user.id)
     await _send_or_edit(call, tasks_screen(tasks), tasks_keyboard(tasks))
 
@@ -458,7 +476,7 @@ async def cb_save_latest(call: CallbackQuery, store: MongoStore) -> None:
     if tool:
         await _send_or_edit(
             call,
-            result_screen(last["tool_key"], last["original"], last["result"]),
+            result_screen(last["tool_key"], last["original"], last["result"], saved=True),
             result_keyboard(tool, saved=True),
         )
 
@@ -678,7 +696,8 @@ async def incoming_message(message: Message, bot: Bot, store: MongoStore, settin
         )
     duration_ms = int((utcnow() - started).total_seconds() * 1000)
     await store.add_log("tool", f"{tool.title} completed in {duration_ms}ms", user_id=message.from_user.id)
-    await _safe_edit_or_answer(processing_message, result_screen(tool_key, text, result), reply_markup=result_keyboard(tool, saved=bool(task_id)))
+    await store.set_pending_tool(message.from_user.id, None)
+    await _safe_edit_or_answer(processing_message, result_screen(tool_key, text, result, saved=bool(task_id)), reply_markup=result_keyboard(tool, saved=bool(task_id)))
 
 
 async def _handle_admin_action(message: Message, bot: Bot, store: MongoStore) -> bool:

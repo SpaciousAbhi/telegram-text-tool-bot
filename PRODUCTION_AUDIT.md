@@ -9,8 +9,9 @@ This audit covers the Telegram Text Tool Bot feature set end to end.
 - Text Style & Fonts opens its category screen and exposes every listed style tool once.
 - Text Cleaning & Utility opens its category screen and exposes every listed utility tool once.
 - Every feature button has a matching functional emoji, title-case label, and no "Bot" suffix.
-- Every selected tool screen shows current category, selected tool, clear send-next instructions, and focused navigation instead of dumping the full tool list again.
-- Every tool accepts text, validates empty/long input, shows a branded processing state, returns copy-friendly output, and supports retry/copy/save/back/home actions.
+- Every selected tool screen shows category, active waiting state, clear send instructions, focused navigation, and an inline cancel path instead of dumping the full tool list again.
+- Opening `/start`, main menu sections, categories, tasks, help, support, profile, premium, or status clears stale pending tool state so users do not accidentally run an old tool.
+- Every tool accepts text, validates empty/long input, shows a branded processing state, returns copy-friendly output, clears the active tool after completion, and supports explicit retry/copy/save/back/home actions.
 - My Tasks supports saved task listing, open result, confirmed delete, confirmed clear history, and restart-safe persistence.
 - Settings supports language, output style, auto-save, notifications, privacy mode, confirmed clear data, confirmed reset, terms, and support.
 - Profile, Premium, Referral, Help, Support, and System Status are routed through the same access checks as the main menu.
@@ -39,7 +40,7 @@ python -c "import app.main; import app.handlers; print('imports ok')"
 Current result:
 
 ```text
-47 passed
+48 passed
 imports ok
 ```
 

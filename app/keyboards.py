@@ -31,10 +31,8 @@ def main_menu_keyboard() -> InlineKeyboardMarkup:
             ],
             [InlineKeyboardButton(text=f"1️⃣ {bold_unicode('TEXT STYLE & FONTS')}", callback_data=f"cat:{STYLE_CATEGORY}")],
             [InlineKeyboardButton(text=f"2️⃣ {bold_unicode('TEXT CLEANING & UTILITY')}", callback_data=f"cat:{UTILITY_CATEGORY}")],
-            [
-                InlineKeyboardButton(text=btn("My Tasks", "📂"), callback_data="menu:tasks"),
-                InlineKeyboardButton(text=btn("System Status", "📊"), callback_data="menu:status"),
-            ],
+            [InlineKeyboardButton(text=btn("My Tasks", "📂"), callback_data="menu:tasks")],
+            [InlineKeyboardButton(text=btn("System Status", "📊"), callback_data="menu:status")],
         ]
     )
 
@@ -52,11 +50,11 @@ def tool_prompt_keyboard(category: str) -> InlineKeyboardMarkup:
         [
             [
                 InlineKeyboardButton(text=btn("Back to Tools", "🔙"), callback_data=f"cat:{category}"),
-                InlineKeyboardButton(text=btn("Main Menu", "🏠"), callback_data="menu:home"),
+                InlineKeyboardButton(text=btn("Cancel Tool", "✖️"), callback_data="tool:cancel"),
             ],
             [
                 InlineKeyboardButton(text=btn("My Tasks", "📂"), callback_data="menu:tasks"),
-                InlineKeyboardButton(text=btn("Help", "❓"), callback_data="menu:help"),
+                InlineKeyboardButton(text=btn("Main Menu", "🏠"), callback_data="menu:home"),
             ],
         ]
     )
@@ -239,7 +237,7 @@ def admin_back_keyboard() -> InlineKeyboardMarkup:
 def admin_broadcast_keyboard() -> InlineKeyboardMarkup:
     return keyboard(
         [
-            [InlineKeyboardButton(text=bold_unicode("START BROADCAST"), callback_data="admin:broadcast:start")],
+            [InlineKeyboardButton(text=btn("Start Broadcast", "📣"), callback_data="admin:broadcast:start")],
             [InlineKeyboardButton(text=btn("Cancel", "✖️"), callback_data="admin:home")],
         ]
     )

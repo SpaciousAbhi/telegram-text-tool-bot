@@ -82,7 +82,6 @@ def category_emoji(category: str) -> str:
 def category_description(category: str) -> str:
     if category == STYLE_CATEGORY:
         return (
-            "This section is for stylish, fancy, bold, italic, aesthetic, emoji-based, "
-            "and Telegram-ready captions, bios, usernames, posts, and messages."
+            "Create polished captions, bios, names, posts, and messages with stylish Unicode text."
         )
-    return "This section is for cleaning, formatting, counting, extracting, removing, converting, and processing text quickly."
+    return "Clean, format, count, extract, convert, and prepare text for quick reuse."

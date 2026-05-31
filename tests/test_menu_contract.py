@@ -31,6 +31,7 @@ def test_start_menu_keeps_categories_before_tools():
 
     assert "cat:style" in callbacks
     assert "cat:utility" in callbacks
+    assert callbacks.index("menu:tasks") < callbacks.index("menu:status")
     assert not any((callback or "").startswith("tool:") for callback in callbacks)
 
 
@@ -65,8 +66,9 @@ def test_selected_tool_prompt_uses_focused_navigation():
     assert f"cat:{STYLE_CATEGORY}" in callbacks
     assert "menu:home" in callbacks
     assert "menu:tasks" in callbacks
-    assert "menu:help" in callbacks
-    assert not any((callback or "").startswith("tool:") for callback in callbacks)
+    assert "tool:cancel" in callbacks
+    assert "menu:help" not in callbacks
+    assert [callback for callback in callbacks if (callback or "").startswith("tool:")] == ["tool:cancel"]
 
 
 def test_core_ui_messages_are_polished_and_copy_friendly():
@@ -78,13 +80,15 @@ def test_core_ui_messages_are_polished_and_copy_friendly():
 
     assert "🧰" in home
     assert "&lt;Abhi&gt;" in home
-    assert bold_unicode("Start with one section below") in home
+    assert bold_unicode("Start Here") in home
     assert "✨" in category
     assert bold_unicode("Available tools") in category
-    assert bold_unicode("Current Category") in prompt
-    assert bold_unicode("Selected Tool") in prompt
-    assert bold_unicode("Send next") in prompt
+    assert bold_unicode("Category") in prompt
+    assert bold_unicode("Status") in prompt
+    assert bold_unicode("Send") in prompt
+    assert "cancel this tool" in prompt
     assert "⏳" in processing
+    assert bold_unicode("Saved") in result
     assert bold_unicode("Copy-Friendly Result") in result
     assert "<code>Style 1: Your Text</code>" in result
 

@@ -400,7 +400,10 @@ async def test_user_tool_flow_saves_task_and_survives_restart():
 
     assert state["users"][111]["daily_usage"] == 1
     assert len(state["tasks"]) == 1
+    assert state["users"][111]["pending_tool"] is None
     assert bold_unicode("RESULT READY") in last_text(text)
+    assert bold_unicode("Saved") in last_text(text)
+    assert "My Tasks" in last_text(text)
     assert "𝐘𝐨𝐮𝐫" in last_text(text)
 
     after_restart = FakeStore(state, settings)
@@ -460,6 +463,31 @@ async def test_settings_flow_saves_preferences_and_manual_task_save():
     reset_user = await store.get_user(111)
     assert reset_user["settings"]["save_results"] is True
     assert reset_user["settings"]["privacy_mode"] is False
+
+
+@pytest.mark.asyncio
+async def test_navigation_and_cancel_clear_pending_tool_state():
+    settings = make_settings()
+    store = FakeStore(settings=settings)
+    bot = FakeBot()
+    await store.upsert_user(SimpleNamespace(id=111, username="user", first_name="User", last_name=""))
+
+    await handlers.cb_tool(FakeCall(user_id=111, data="tool:stylish_text"), bot, store, settings)
+    assert store.state["users"][111]["pending_tool"] == "stylish_text"
+
+    await handlers.cb_home(FakeCall(user_id=111, data="menu:home"), bot, store, settings)
+    assert store.state["users"][111]["pending_tool"] is None
+
+    await handlers.cb_tool(FakeCall(user_id=111, data="tool:word_counter"), bot, store, settings)
+    await handlers.cb_category(FakeCall(user_id=111, data="cat:utility"), bot, store, settings)
+    assert store.state["users"][111]["pending_tool"] is None
+
+    await handlers.cb_tool(FakeCall(user_id=111, data="tool:text_cleaner"), bot, store, settings)
+    cancel = FakeCall(user_id=111, data="tool:cancel")
+    await handlers.cb_tool(cancel, bot, store, settings)
+
+    assert store.state["users"][111]["pending_tool"] is None
+    assert bold_unicode("TOOL CANCELLED") in last_text(cancel.message)
 
 
 @pytest.mark.asyncio
@@ -559,6 +587,7 @@ async def test_limits_cooldown_and_expired_premium_are_enforced():
     await handlers.incoming_message(first, bot, store, settings)
     assert bold_unicode("RESULT READY") in last_text(first)
 
+    await store.set_pending_tool(111, "word_counter")
     second = FakeMessage(user_id=111, text="three four")
     await handlers.incoming_message(second, bot, store, settings)
     assert bold_unicode("COOLDOWN ACTIVE") in last_text(second)
@@ -568,6 +597,7 @@ async def test_limits_cooldown_and_expired_premium_are_enforced():
     user["premium_until"] = datetime.now(UTC) - timedelta(days=1)
     user["daily_usage"] = settings.free_daily_limit
     user["last_tool_at"] = datetime.now(UTC) - timedelta(seconds=30)
+    await store.set_pending_tool(111, "word_counter")
     third = FakeMessage(user_id=111, text="five six")
     await handlers.incoming_message(third, bot, store, settings)
     assert bold_unicode("DAILY LIMIT REACHED") in last_text(third)
