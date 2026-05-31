@@ -12,8 +12,12 @@ This audit covers the Telegram Text Tool Bot feature set end to end.
 - Every selected tool screen shows category, active waiting state, clear send instructions, focused navigation, and an inline cancel path instead of dumping the full tool list again.
 - Opening `/start`, main menu sections, categories, tasks, help, support, profile, premium, or status clears stale pending tool state so users do not accidentally run an old tool.
 - Every tool accepts text, validates empty/long input, shows a branded processing state, returns copy-friendly output, clears the active tool after completion, and supports explicit retry/copy/save/back/home actions.
+- Clean, Compact, and Detailed result styles now produce visibly different result cards, and the selected style is marked in Settings.
+- Privacy Mode removes the unavailable Save action and labels results as not stored.
+- Referral includes a real Telegram share button and refresh action. Premium lists explicit Telegram Stars prices. Force Subscription uses one clear Check Access action.
+- Dynamic tool instructions are HTML-escaped for Telegram parsing, and custom `/start` captions plus generated results are capped after escaping for Telegram-safe delivery.
 - My Tasks supports saved task listing, open result, confirmed delete, confirmed clear history, and restart-safe persistence.
-- Settings supports language, output style, auto-save, notifications, privacy mode, confirmed clear data, confirmed reset, terms, and support.
+- Settings exposes the currently supported English interface language honestly, plus functional output style, auto-save, notifications, privacy mode, confirmed clear data, confirmed reset, terms, and support controls.
 - Profile, Premium, Referral, Help, Support, and System Status are routed through the same access checks as the main menu.
 
 ## Admin Flows
@@ -25,6 +29,7 @@ This audit covers the Telegram Text Tool Bot feature set end to end.
 - Force Subscription supports global on/off, add, per-channel enable/disable, confirmed delete, join mode, request mode, hidden joined channels, and stored join-request checks.
 - Referral settings support rewards on/off, required joins, reward days, and leaderboard.
 - Ban/unban, maintenance mode, bot settings, and logs are DB-backed.
+- Returning to the admin panel clears abandoned input sessions so stale admin actions cannot consume unrelated messages.
 - Bot settings update start caption, start photo, support username, update channel, free limit, premium limit, cooldown, and max text length without redeploying.
 
 ## Verification
@@ -40,7 +45,7 @@ python -c "import app.main; import app.handlers; print('imports ok')"
 Current result:
 
 ```text
-48 passed
+59 passed
 imports ok
 ```
 

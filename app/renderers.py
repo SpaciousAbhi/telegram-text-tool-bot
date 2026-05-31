@@ -29,7 +29,7 @@ def main_caption(custom_caption: str = "", user: dict[str, Any] | None = None) -
     return (
         f"🧰 {bold_unicode('TEXT TOOL BOT')}\n\n"
         f"{greeting}\n"
-        f"{escape_html(body)}\n\n"
+        f"{escape_html_clamped(body, 620)}\n\n"
         f"{bold_unicode('Start Here')}\n"
         "1. Choose a category\n"
         "2. Pick one tool\n"
@@ -53,8 +53,8 @@ def tool_prompt(tool_key: str) -> str:
         f"{tool.emoji} {tool.display_title}\n\n"
         f"{bold_unicode('Category')}: {category_emoji(tool.category)} {category_title(tool.category)}\n"
         f"{bold_unicode('Status')}: Waiting for your text\n\n"
-        f"{bold_unicode('Send')}: {tool.instruction}\n"
-        f"{bold_unicode('You get')}: {tool.result_hint}.\n\n"
+        f"{bold_unicode('Send')}: {escape_html(tool.instruction)}\n"
+        f"{bold_unicode('You get')}: {escape_html(tool.result_hint)}.\n\n"
         "Send the text as your next message, or cancel this tool from the buttons below."
     )
 
@@ -68,17 +68,42 @@ def processing_screen(tool_key: str) -> str:
     )
 
 
-def result_screen(tool_key: str, original: str, result: str, saved: bool = False) -> str:
+def result_screen(tool_key: str, original: str, result: str, saved: bool = False, output_style: str = "Clean") -> str:
+    return _render_result_screen(tool_key, original, result, "My Tasks" if saved else "Not saved yet", output_style)
+
+
+def private_result_screen(tool_key: str, original: str, result: str, output_style: str = "Clean") -> str:
+    return _render_result_screen(tool_key, original, result, "Not stored · Privacy Mode is on", output_style, privacy_mode=True)
+
+
+def _render_result_screen(
+    tool_key: str,
+    original: str,
+    result: str,
+    saved_label: str,
+    output_style: str,
+    privacy_mode: bool = False,
+) -> str:
     tool = TOOLS[tool_key]
-    result = clamp(result, 3200)
+    escaped_result = escape_html_clamped(result, 3200)
+    privacy_note = "\nThis result will not be kept in My Tasks." if privacy_mode else ""
+    if output_style == "Compact":
+        return (
+            f"✅ {bold_unicode('RESULT READY')} · {tool.emoji} {tool.display_title}\n\n"
+            f"<code>{escaped_result}</code>\n\n"
+            f"{bold_unicode('Saved')}: {saved_label}{privacy_note}"
+        )
+    category_line = f"{bold_unicode('Category')}: {category_emoji(tool.category)} {category_title(tool.category)}\n" if output_style == "Detailed" else ""
+    input_limit = 240 if output_style == "Detailed" else 120
     return (
         f"✅ {bold_unicode('RESULT READY')}\n\n"
+        f"{category_line}"
         f"{bold_unicode('Tool')}: {tool.emoji} {tool.display_title}\n"
-        f"{bold_unicode('Input')}: {escape_html(preview(original, 120))}\n\n"
-        f"{bold_unicode('Saved')}: {'My Tasks' if saved else 'Not saved yet'}\n\n"
+        f"{bold_unicode('Input')}: {escape_html(preview(original, input_limit))}\n\n"
+        f"{bold_unicode('Saved')}: {saved_label}\n\n"
         f"{bold_unicode('Copy-Friendly Result')}\n"
-        f"<code>{escape_html(result)}</code>\n\n"
-        "Use the action buttons below. Try Again starts a fresh run of this tool."
+        f"<code>{escaped_result}</code>\n\n"
+        f"Use the action buttons below. Try Again starts a fresh run of this tool.{privacy_note}"
     )
 
 
@@ -168,10 +193,7 @@ def referral_screen(
     reward_days: int = 0,
 ) -> str:
     user_id = user.get("user_id")
-    if bot_username:
-        link = f"https://t.me/{bot_username}?start=ref_{user_id}"
-    else:
-        link = f"Your referral code: ref_{user_id}"
+    link = referral_link(user, bot_username) or f"Your referral code: ref_{user_id}"
     return (
         f"🎁 {bold_unicode('REFERRAL')}\n\n"
         f"{bold_unicode('Your Link')}\n<code>{escape_html(link)}</code>\n\n"
@@ -184,15 +206,23 @@ def referral_screen(
     )
 
 
+def referral_link(user: dict[str, Any], bot_username: str | None = None) -> str:
+    user_id = user.get("user_id")
+    if bot_username:
+        return f"https://t.me/{bot_username}?start=ref_{user_id}"
+    return ""
+
+
 def settings_screen(user: dict[str, Any]) -> str:
     settings = user.get("settings", {})
     return (
         f"⚙️ {bold_unicode('SETTINGS')}\n\n"
-        f"{bold_unicode('Language')}: {settings.get('language', 'English')}\n"
+        f"{bold_unicode('Interface Language')}: {settings.get('language', 'English')}\n"
         f"{bold_unicode('Output Style')}: {settings.get('default_output_style', 'Clean')}\n"
         f"{bold_unicode('Result Saving')}: {_toggle(settings.get('save_results', True))}\n"
         f"{bold_unicode('Notifications')}: {_toggle(settings.get('notifications', True))}\n"
-        f"{bold_unicode('Privacy Mode')}: {_toggle(settings.get('privacy_mode', False))}"
+        f"{bold_unicode('Privacy Mode')}: {_toggle(settings.get('privacy_mode', False))}\n\n"
+        "Privacy Mode keeps new results out of My Tasks and recent-result storage."
     )
 
 
@@ -204,7 +234,7 @@ def help_screen() -> str:
         "3. Send the text you want processed.\n"
         "4. Copy or save the result from the reply.\n"
         "5. Open My Tasks for recent saved results.\n\n"
-        "If anything feels stuck, use Main Menu and select the tool again."
+        f"{bold_unicode('Tip')}: Try Again starts a fresh run. Cancel Tool clears the selected tool before you send text."
     )
 
 
@@ -230,11 +260,10 @@ def support_screen(support_username: str, update_channel: str) -> str:
 def system_status_screen(counts: dict[str, int], uptime: str, maintenance: bool, cooldown_seconds: int = 0) -> str:
     return (
         f"📊 {bold_unicode('SYSTEM STATUS')}\n\n"
-        f"{bold_unicode('Status')}: {'Maintenance' if maintenance else 'Online'}\n"
+        f"{bold_unicode('Mode')}: {'Maintenance' if maintenance else 'Normal'}\n"
         f"{bold_unicode('Text Tools')}: Working\n"
         f"{bold_unicode('Processing')}: Normal\n"
         f"{bold_unicode('Maintenance')}: {'Active' if maintenance else 'No active maintenance'}\n"
-        f"{bold_unicode('Current Mode')}: {'Maintenance' if maintenance else 'Normal'}\n"
         f"{bold_unicode('Uptime')}: {uptime}\n\n"
         f"{bold_unicode('Cooldown')}: {cooldown_seconds}s\n"
         f"{bold_unicode('Users')}: {counts.get('users', 0)}\n"
@@ -266,8 +295,8 @@ def task_detail_screen(task: dict[str, Any]) -> str:
         f"{bold_unicode('Task Type')}: {emoji} {escape_html(task.get('tool_title', 'Text Task'))}\n"
         f"{bold_unicode('Status')}: {task.get('status', 'Completed')}\n"
         f"{bold_unicode('Date')}: {compact_dt(task.get('created_at'))}\n\n"
-        f"{bold_unicode('Original')}\n<code>{escape_html(clamp(task.get('original', ''), 1000))}</code>\n\n"
-        f"{bold_unicode('Result')}\n<code>{escape_html(clamp(task.get('result', ''), 1800))}</code>"
+        f"{bold_unicode('Original')}\n<code>{escape_html_clamped(task.get('original', ''), 1000)}</code>\n\n"
+        f"{bold_unicode('Result')}\n<code>{escape_html_clamped(task.get('result', ''), 1800)}</code>"
     )
 
 
@@ -275,7 +304,7 @@ def force_subscription_screen(channels: list[dict[str, Any]]) -> str:
     lines = [
         f"🔐 {bold_unicode('JOIN REQUIRED')}",
         "",
-        "Join the required channel(s), then press Check Access.",
+        "Join each channel below, then press Check Access. The bot opens automatically after verification.",
         "",
     ]
     for channel in channels:
@@ -383,11 +412,22 @@ def logs_screen(logs: list[dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
-def clamp(value: str, limit: int) -> str:
+def escape_html_clamped(value: object, limit: int) -> str:
     value = str(value)
-    if len(value) <= limit:
-        return value
-    return f"{value[: limit - 80]}\n\n... Result shortened for Telegram message limit."
+    escaped = escape_html(value)
+    if len(escaped) <= limit:
+        return escaped
+    suffix = "\n\n... Result shortened for Telegram message limit."
+    available = max(0, limit - len(suffix))
+    parts: list[str] = []
+    used = 0
+    for char in value:
+        escaped_char = escape_html(char)
+        if used + len(escaped_char) > available:
+            break
+        parts.append(escaped_char)
+        used += len(escaped_char)
+    return "".join(parts) + suffix
 
 
 def preview(value: str, limit: int = 80) -> str:

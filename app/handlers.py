@@ -25,6 +25,7 @@ from app.keyboards import (
     category_keyboard,
     confirm_keyboard,
     force_gate_keyboard,
+    help_keyboard,
     language_keyboard,
     main_menu_keyboard,
     output_style_keyboard,
@@ -34,8 +35,10 @@ from app.keyboards import (
     result_keyboard,
     settings_keyboard,
     support_keyboard,
+    status_keyboard,
     task_detail_keyboard,
     tasks_keyboard,
+    terms_keyboard,
     tool_prompt_keyboard,
 )
 from app.renderers import (
@@ -54,10 +57,12 @@ from app.renderers import (
     logs_screen,
     main_caption,
     premium_screen,
+    private_result_screen,
     processing_error_screen,
     processing_screen,
     profile_screen,
     referral_leaderboard_screen,
+    referral_link,
     referral_screen,
     result_screen,
     settings_screen,
@@ -108,7 +113,7 @@ async def cmd_help(message: Message, bot: Bot, store: MongoStore, settings: Sett
     if not await _ensure_user_access(message, bot, store, settings):
         return
     await store.set_pending_tool(message.from_user.id, None)
-    await message.answer(help_screen(), reply_markup=main_menu_keyboard())
+    await message.answer(help_screen(), reply_markup=help_keyboard())
 
 
 @router.chat_join_request()
@@ -225,8 +230,10 @@ async def cb_premium(call: CallbackQuery, bot: Bot, store: MongoStore, settings:
 
 
 @router.callback_query(F.data.startswith("premium:"))
-async def cb_premium_action(call: CallbackQuery, store: MongoStore, settings: Settings) -> None:
-    user = await store.upsert_user(call.from_user)
+async def cb_premium_action(call: CallbackQuery, bot: Bot, store: MongoStore, settings: Settings) -> None:
+    user = await _ensure_user_access(call, bot, store, settings)
+    if not user:
+        return
     action = call.data.split(":")
     if len(action) == 3 and action[1] == "buy":
         days = int(action[2])
@@ -297,13 +304,15 @@ async def cb_referral(call: CallbackQuery, bot: Bot, store: MongoStore, settings
             int(config.get("referral_required_joins", 3)),
             int(config.get("referral_reward_days", 7)),
         ),
-        referral_keyboard(),
+        referral_keyboard(referral_link(user, bot_username)),
     )
 
 
 @router.callback_query(F.data.startswith("referral:"))
-async def cb_referral_action(call: CallbackQuery, bot: Bot, store: MongoStore) -> None:
-    user = await store.upsert_user(call.from_user)
+async def cb_referral_action(call: CallbackQuery, bot: Bot, store: MongoStore, settings: Settings) -> None:
+    user = await _ensure_user_access(call, bot, store, settings)
+    if not user:
+        return
     bot_username = None
     try:
         bot_username = (await bot.get_me()).username
@@ -319,7 +328,7 @@ async def cb_referral_action(call: CallbackQuery, bot: Bot, store: MongoStore) -
             int(config.get("referral_required_joins", 3)),
             int(config.get("referral_reward_days", 7)),
         ),
-        referral_keyboard(),
+        referral_keyboard(referral_link(user, bot_username)),
     )
 
 
@@ -385,20 +394,30 @@ async def cb_settings_action(call: CallbackQuery, bot: Bot, store: MongoStore, s
         )
         await call.answer("Settings reset.")
     elif action == "terms":
-        await _send_or_edit(call, terms_screen(), settings_keyboard())
+        await _send_or_edit(call, terms_screen(), terms_keyboard())
         return
     elif action == "language":
-        await _send_or_edit(call, f"🌐 {bold_unicode('LANGUAGE')}\n\nSelect your preferred language.", language_keyboard())
+        await _send_or_edit(call, f"🌐 {bold_unicode('INTERFACE LANGUAGE')}\n\nEnglish is currently available.", language_keyboard(user_settings.get("language", "English")))
         return
     elif action == "style":
-        await _send_or_edit(call, f"🎨 {bold_unicode('DEFAULT OUTPUT STYLE')}\n\nSelect how results should be presented.", output_style_keyboard())
+        await _send_or_edit(
+            call,
+            f"🎨 {bold_unicode('DEFAULT OUTPUT STYLE')}\n\nChoose how result messages should be presented.",
+            output_style_keyboard(user_settings.get("default_output_style", "Clean")),
+        )
         return
     elif action.startswith("lang:"):
         language = action.split(":", 1)[1]
+        if language != "English":
+            await call.answer("This language is not available yet.", show_alert=True)
+            return
         await store.set_user_setting(call.from_user.id, "language", language)
         await call.answer(f"Language set to {language}.")
     elif action.startswith("style:set:"):
         style = action.rsplit(":", 1)[1]
+        if style not in {"Clean", "Compact", "Detailed"}:
+            await call.answer("Unknown output style.", show_alert=True)
+            return
         await store.set_user_setting(call.from_user.id, "default_output_style", style)
         await call.answer(f"Default output style set to {style}.")
     user = await store.get_user(call.from_user.id) or user
@@ -419,7 +438,7 @@ async def cb_help(call: CallbackQuery, bot: Bot, store: MongoStore, settings: Se
     if not await _ensure_user_access(call, bot, store, settings):
         return
     await store.set_pending_tool(call.from_user.id, None)
-    await _send_or_edit(call, help_screen(), main_menu_keyboard())
+    await _send_or_edit(call, help_screen(), help_keyboard())
 
 
 @router.callback_query(F.data == "menu:support")
@@ -441,7 +460,7 @@ async def cb_status(call: CallbackQuery, bot: Bot, store: MongoStore, settings: 
     counts = await store.counts()
     maintenance = await store.is_maintenance()
     config = await store.runtime_config()
-    await _send_or_edit(call, system_status_screen(counts, _uptime(), maintenance, int(config.get("cooldown_seconds", 2))), main_menu_keyboard())
+    await _send_or_edit(call, system_status_screen(counts, _uptime(), maintenance, int(config.get("cooldown_seconds", 2))), status_keyboard())
 
 
 @router.callback_query(F.data == "menu:tasks")
@@ -476,7 +495,13 @@ async def cb_save_latest(call: CallbackQuery, store: MongoStore) -> None:
     if tool:
         await _send_or_edit(
             call,
-            result_screen(last["tool_key"], last["original"], last["result"], saved=True),
+            result_screen(
+                last["tool_key"],
+                last["original"],
+                last["result"],
+                saved=True,
+                output_style=str(last.get("output_style", "Clean")),
+            ),
             result_keyboard(tool, saved=True),
         )
 
@@ -485,6 +510,7 @@ async def cb_save_latest(call: CallbackQuery, store: MongoStore) -> None:
 async def cb_task_open(call: CallbackQuery, bot: Bot, store: MongoStore, settings: Settings) -> None:
     if not await _ensure_user_access(call, bot, store, settings):
         return
+    await store.set_pending_tool(call.from_user.id, None)
     task_id = call.data.rsplit(":", 1)[1]
     task = await store.get_task(call.from_user.id, task_id)
     if not task:
@@ -525,6 +551,7 @@ async def cb_admin(call: CallbackQuery, bot: Bot, store: MongoStore, settings: S
     if not settings.is_admin(call.from_user.id):
         await _send_or_edit(call, unauthorized_screen(), main_menu_keyboard())
         return
+    await store.set_admin_action(call.from_user.id, None)
     data = call.data
     if data == "admin:home":
         await _show_admin_home(call, store)
@@ -692,12 +719,29 @@ async def incoming_message(message: Message, bot: Bot, store: MongoStore, settin
     else:
         await store.set_last_result(
             message.from_user.id,
-            {"tool_key": tool_key, "tool_title": tool.title, "original": text, "result": result, "task_id": task_id},
+            {
+                "tool_key": tool_key,
+                "tool_title": tool.title,
+                "original": text,
+                "result": result,
+                "task_id": task_id,
+                "output_style": user_preferences.get("default_output_style", "Clean"),
+            },
         )
     duration_ms = int((utcnow() - started).total_seconds() * 1000)
     await store.add_log("tool", f"{tool.title} completed in {duration_ms}ms", user_id=message.from_user.id)
     await store.set_pending_tool(message.from_user.id, None)
-    await _safe_edit_or_answer(processing_message, result_screen(tool_key, text, result, saved=bool(task_id)), reply_markup=result_keyboard(tool, saved=bool(task_id)))
+    output_style = str(user_preferences.get("default_output_style", "Clean"))
+    result_text = (
+        private_result_screen(tool_key, text, result, output_style=output_style)
+        if privacy_mode
+        else result_screen(tool_key, text, result, saved=bool(task_id), output_style=output_style)
+    )
+    await _safe_edit_or_answer(
+        processing_message,
+        result_text,
+        reply_markup=result_keyboard(tool, saved=bool(task_id), can_save=not privacy_mode),
+    )
 
 
 async def _handle_admin_action(message: Message, bot: Bot, store: MongoStore) -> bool:
@@ -752,8 +796,11 @@ async def _handle_admin_action(message: Message, bot: Bot, store: MongoStore) ->
             await message.answer(f"✅ {bold_unicode('USER UNBANNED')}\n\nUser {text} can use the bot again.", reply_markup=admin_ban_keyboard())
         else:
             await message.answer(f"⚠️ {bold_unicode('UNKNOWN ADMIN ACTION')}", reply_markup=admin_back_keyboard())
-    except Exception as exc:
-        await message.answer(f"⚠️ {bold_unicode('INVALID INPUT')}\n\n{type(exc).__name__}. Please try again.", reply_markup=admin_back_keyboard())
+    except Exception:
+        await message.answer(
+            f"⚠️ {bold_unicode('INVALID INPUT')}\n\nCheck the requested format and try again.",
+            reply_markup=admin_back_keyboard(),
+        )
         return True
     await store.set_admin_action(message.from_user.id, None)
     return True

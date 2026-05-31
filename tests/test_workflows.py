@@ -425,12 +425,15 @@ async def test_settings_flow_saves_preferences_and_manual_task_save():
     bot = FakeBot()
     await store.upsert_user(SimpleNamespace(id=111, username="user", first_name="User", last_name=""))
 
-    await handlers.cb_settings_action(FakeCall(user_id=111, data="settings:lang:Hindi"), bot, store, settings)
+    unavailable_language = FakeCall(user_id=111, data="settings:lang:Hindi")
+    await handlers.cb_settings_action(unavailable_language, bot, store, settings)
+    assert unavailable_language.responses[-1][1] == "This language is not available yet."
+    await handlers.cb_settings_action(FakeCall(user_id=111, data="settings:lang:English"), bot, store, settings)
     await handlers.cb_settings_action(FakeCall(user_id=111, data="settings:style:set:Detailed"), bot, store, settings)
     await handlers.cb_settings_action(FakeCall(user_id=111, data="settings:toggle_save"), bot, store, settings)
 
     user = await store.get_user(111)
-    assert user["settings"]["language"] == "Hindi"
+    assert user["settings"]["language"] == "English"
     assert user["settings"]["default_output_style"] == "Detailed"
     assert user["settings"]["save_results"] is False
 
@@ -450,6 +453,14 @@ async def test_settings_flow_saves_preferences_and_manual_task_save():
     await handlers.incoming_message(private_msg, bot, store, settings)
     assert len(store.state["tasks"]) == 1
     assert store.state["users"][111]["last_result"] is None
+    assert "Privacy Mode is on" in last_text(private_msg)
+    private_callbacks = [
+        button.callback_data
+        for row in private_msg.responses[-1][2].inline_keyboard
+        for button in row
+        if button.callback_data
+    ]
+    assert "task:save_latest" not in private_callbacks
 
     terms = FakeCall(user_id=111, data="settings:terms")
     await handlers.cb_settings_action(terms, bot, store, settings)
@@ -551,6 +562,21 @@ async def test_admin_management_flows_save_to_database_and_gate_users():
     assert bold_unicode("CONFIRM DELETE CHANNEL") in last_text(delete_force.message)
     await handlers.cb_admin(FakeCall(user_id=999, data=f"admin:force:delete_confirm:{channel_id}"), bot, store, settings)
     assert channel_id not in store.state["force_channels"]
+
+
+@pytest.mark.asyncio
+async def test_admin_back_navigation_clears_abandoned_input_state():
+    settings = make_settings()
+    store = FakeStore(settings=settings)
+    bot = FakeBot()
+    await store.upsert_user(SimpleNamespace(id=999, username="admin", first_name="Admin", last_name=""))
+
+    await handlers.cb_admin(FakeCall(user_id=999, data="admin:premium:add"), bot, store, settings)
+    assert (await store.get_admin_action(999))["action"] == "premium_add"
+
+    await handlers.cb_admin(FakeCall(user_id=999, data="admin:home"), bot, store, settings)
+
+    assert await store.get_admin_action(999) is None
 
 
 @pytest.mark.asyncio
